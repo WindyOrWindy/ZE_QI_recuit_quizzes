@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>用户登录</title>
+<style>
+    .left_item{
+        position: relative;
+        width: 120px;
+        height: 50px;
+        line-height: 50px;
+        text-align: center;
+        background-color: #f0f0f0;
+        border: 1px solid #ccc;
+        cursor: pointer;
+        display: block;             
+        box-sizing: border-box;
+        color: #333;
+        text-decoration: none;
+    }
+    .left_item:hover{ background-color: #e4e4e4; }
+    .left_item.active{
+        background-color: #d4c7c7; 
+        font-weight: bold;
+    }
+
+    #self{ height: auto; }
+
+    .right_context1{
+        position: relative;
+        margin-top: -200px;     
+        float: left;
+        left: 30%;
+        width: 50%;
+        min-height: 200px;         
+        line-height: 50px;
+        text-align: center;
+        background-color: #d4c7c7;
+        border: 1px solid #ccc;
+        cursor: pointer;
+        padding: 20px;
+        box-sizing: border-box;
+    }
+
+    .right_context1 h2{
+        margin: 0;
+        font-size: 18px;
+        line-height: 40px;
+    }
+    .api_info{
+        margin-bottom: 10px;
+        padding: 0 10px;
+        background-color: #efe9e9;
+        border: 1px dashed #b5a8a8;
+        font-size: 13px;
+        line-height: 26px;
+    }
+    .field{
+        line-height: 30px;
+    }
+    .field label{
+        display: inline-block;
+        width: 70px;
+        text-align: right;
+        margin-right: 8px;
+    }
+    .field input{
+        width: 200px;
+        height: 26px;
+        line-height: 26px;
+        padding: 0 6px;
+        border: 1px solid #999;
+        box-sizing: border-box;
+    }
+    button{
+        height: 30px;
+        padding: 0 18px;
+        cursor: pointer;
+    }
+    /* 响应展示 */
+    #result{
+        margin-top: 14px;
+        padding: 8px 10px;
+        min-height: 20px;
+        background-color: #f7f4f4;
+        border: 1px solid #b5a8a8;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 12px;
+        line-height: 18px;
+        text-align: left;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+</style>
+</head>
+<body>
+<!--左侧-->
+<a class="left_item" id="sign_up" href="/register">用户注册</a>
+<a class="left_item active" id="sign_in" href="/login">用户登录</a>
+<a class="left_item" id="users_list" href="/user_list">查看用户列表</a>
+<div class="left_item" id="self">个人中心
+    <div>
+        <a class="left_item" id="self_info" href="/me?action=info">查看个人信息</a>
+        <a class="left_item" id="self_edit_username" href="/me?action=username">修改用户名</a>
+        <a class="left_item" id="self_edit_password" href="/me?action=password">修改密码</a>
+        <a class="left_item" id="self_delete" href="/me?action=delete">注销账号</a>
+    </div>
+</div>
+<!--右侧-->
+<div class="right_context1">
+    <h2>用户登录</h2>
+
+    <div class="api_info">POST /users/login</div>
+
+    <!-- 请求体：{ "username": "string", "password": "string" } -->
+    <form id="sign_in_form">
+        <div class="field">
+            <label for="username">用户名:</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+        <div class="field">
+            <label for="password">密码:</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit">登录</button>
+    </form>
+
+    <!-- 响应：200 { "token": "jwt_string", "expires_in": 3600 } -->
+    <div id="result">响应(sessionId)将显示在这里</div>
+</div>
+
+<!-- 左侧菜单切换 -->
+<script src="{{ url_for('static', filename='menu.js') }}"></script>
+
+<script>
+(function () {
+    // 取出当前标签页保存的 sessionId，供需要登录态的接口放进请求头
+    window.currentSessionId = function () {
+        return sessionStorage.getItem('sessionId') || '';
+    };
+
+    // 后端返回 401（请求头没带 sessionID 或已失效）时，在结果区显示提示
+    window.showUnauthorized = function (result) {
+        if (result) result.textContent = '401 未登录';
+    };
+})();
+</script>
+
+<!-- 登录表单：点击「登录」后把数据以 JSON 发给 app.py -->
+<script>
+    document.getElementById('sign_in_form').addEventListener('submit', function (e) {
+        e.preventDefault();          // 阻止表单默认提交，否则整个页面会刷新
+
+        var result  = document.getElementById('result');
+        var payload = {
+            username: document.getElementById('username').value,
+            password: document.getElementById('password').value
+        };
+
+        result.textContent = '发送中…';
+
+        fetch('/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(function (resp) {
+            return resp.text().then(function (text) {// 读取响应体（原始文本）
+                // 后端返回的若不是 JSON（例如仍是 HTML），原样显示，方便排查
+                try {
+                    var data = JSON.parse(text);// parse->把json转化成js语言
+                    // 登录成功：后端查过数据库才返回 sessionId，说明身份有效
+                    if (data && (data.sessionId || data.session_id)) {
+                        sessionStorage.setItem('sessionId',
+                            data.sessionId || data.session_id);
+                    }
+                    return JSON.stringify(data, null, 2);
+                } catch (err) {
+                    return text.slice(0, 300);
+                }
+            });
+        })
+        .then(function (text) {
+            result.textContent = text;
+        })
+        .catch(function (err) {
+            result.textContent = '请求失败：' + err;
+        });
+    });
+</script>
+
+</body>
+</html>
