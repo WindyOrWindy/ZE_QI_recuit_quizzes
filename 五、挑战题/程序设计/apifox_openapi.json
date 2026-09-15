@@ -1,0 +1,261 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "用户管理系统 API",
+    "description": "Flask 用户管理系统接口文档，可直接在 Apifox 中导入（项目 → 导入 → OpenAPI/Swagger → 选择本文件）。\n\n测试顺序：注册 → 登录（后置脚本自动写入环境变量 sessionId）→ 查看个人信息 → 修改用户名 → 修改密码 → 用户列表 → 注销账号。\n\n鉴权方式：需要登录态的接口在请求头带 Session-ID: {{sessionId}}。",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1",
+      "description": "本地环境（app.py 默认监听 80 端口；若你改成 5000，请把这里改为 http://127.0.0.1:5000）"
+    }
+  ],
+  "paths": {
+    "/register": {
+      "post": {
+        "summary": "用户注册",
+        "description": "请求体必须是 raw / JSON。注册成功会直接返回 sessionId（注册即登录）。",
+        "tags": ["用户"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string", "example": "alice" },
+                  "password": { "type": "string", "example": "123456" }
+                }
+              },
+              "example": { "username": "alice", "password": "123456" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "注册成功（题目验收要求 201）",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 201,
+                  "message": "注册成功",
+                  "userId": 1,
+                  "username": "alice",
+                  "sessionId": "b3f1c0e2-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数缺失",
+            "content": { "application/json": { "example": { "code": 400, "message": "invalid parameters" } } }
+          },
+          "409": {
+            "description": "用户名已存在（题目验收：重复注册 409 或 400）",
+            "content": { "application/json": { "example": { "code": 409, "message": "username already exists" } } }
+          },
+          "500": {
+            "description": "服务器错误",
+            "content": { "application/json": { "example": { "code": 500, "message": "server error" } } }
+          }
+        }
+      }
+    },
+    "/login": {
+      "post": {
+        "summary": "用户登录",
+        "description": "登录成功后返回 sessionId，请在此接口配置【后置操作 → 提取变量】，把响应里的 sessionId 存到环境变量，后续接口自动带上。\n\n提取方式：JSONPath $.sessionId → 环境变量 sessionId（或后置脚本：pm.environment.set('sessionId', pm.response.json().sessionId)）",
+        "tags": ["用户"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string", "example": "alice" },
+                  "password": { "type": "string", "example": "123456" }
+                }
+              },
+              "example": { "username": "alice", "password": "123456" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "message": "登录成功",
+                  "sessionId": "b3f1c0e2-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+                  "username": "alice"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数缺失",
+            "content": { "application/json": { "example": { "code": 400, "message": "invalid parameters" } } }
+          },
+          "401": {
+            "description": "用户名或密码错误",
+            "content": { "application/json": { "example": { "code": 401, "message": "username or password is wrong" } } }
+          }
+        }
+      }
+    },
+    "/users/me": {
+      "get": {
+        "summary": "查看个人信息",
+        "description": "需要登录态：请求头 Session-ID: {{sessionId}}",
+        "tags": ["用户"],
+        "parameters": [
+          { "name": "Session-ID", "in": "header", "required": true, "schema": { "type": "string" }, "example": "{{sessionId}}" }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "example": { "code": 200, "data": { "userID": 1, "username": "alice" } }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录 / sessionId 失效",
+            "content": { "application/json": { "example": { "code": 401, "message": "Unauthorized" } } }
+          }
+        }
+      },
+      "patch": {
+        "summary": "修改用户名 或 修改密码",
+        "description": "靠请求体字段区分两种操作：\n\n1) 改用户名：body 里含 new_username → {\"new_username\":\"alice2\", \"password\":\"123456\"}（必须同时带当前密码）\n2) 改密码：body 里不含 new_username → {\"old_password\":\"123456\", \"new_password\":\"654321\"}\n\n需要登录态：请求头 Session-ID: {{sessionId}}",
+        "tags": ["用户"],
+        "parameters": [
+          { "name": "Session-ID", "in": "header", "required": true, "schema": { "type": "string" }, "example": "{{sessionId}}" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "new_username": { "type": "string", "example": "alice2" },
+                  "password": { "type": "string", "example": "123456" },
+                  "old_password": { "type": "string", "example": "123456" },
+                  "new_password": { "type": "string", "example": "654321" }
+                }
+              },
+              "examples": {
+                "改用户名": {
+                  "value": { "new_username": "alice2", "password": "123456" }
+                },
+                "改密码": {
+                  "value": { "old_password": "123456", "new_password": "654321" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "修改成功",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "改用户名成功": {
+                    "value": { "code": 200, "username": "alice2", "message": "username updated successfully" }
+                  },
+                  "改密码成功": {
+                    "value": { "code": 200, "message": "password updated successfully" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数缺失或密码错误",
+            "content": { "application/json": { "example": { "code": 400, "message": "wrong password" } } }
+          },
+          "401": {
+            "description": "未登录",
+            "content": { "application/json": { "example": { "code": 401, "message": "Unauthorized" } } }
+          },
+          "409": {
+            "description": "新用户名已存在",
+            "content": { "application/json": { "example": { "code": 409, "message": "username already exists" } } }
+          }
+        }
+      },
+      "delete": {
+        "summary": "注销账号",
+        "description": "需要验证密码，请求体 {\"password\":\"123456\"}。成功返回 204，响应体为空（断言时不要解析 JSON）。",
+        "tags": ["用户"],
+        "parameters": [
+          { "name": "Session-ID", "in": "header", "required": true, "schema": { "type": "string" }, "example": "{{sessionId}}" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "password": { "type": "string", "example": "123456" } }
+              },
+              "example": { "password": "123456" }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "注销成功（无响应体）" },
+          "400": {
+            "description": "密码错误",
+            "content": { "application/json": { "example": { "code": 400, "message": "wrong password" } } }
+          },
+          "401": {
+            "description": "未登录",
+            "content": { "application/json": { "example": { "code": 401, "message": "Unauthorized" } } }
+          }
+        }
+      }
+    },
+    "/users/user_list": {
+      "get": {
+        "summary": "查看用户列表（分页）",
+        "description": "需要登录态：请求头 Session-ID: {{sessionId}}。只返回 username，不含密码和 sessionID。",
+        "tags": ["用户"],
+        "parameters": [
+          { "name": "Session-ID", "in": "header", "required": true, "schema": { "type": "string" }, "example": "{{sessionId}}" },
+          { "name": "page", "in": "query", "required": false, "schema": { "type": "integer", "default": 1 }, "example": 1 },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "default": 20, "maximum": 100 }, "example": 20 }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": 200,
+                  "data": [{ "username": "alice" }, { "username": "bob" }],
+                  "total": 2,
+                  "page": 1,
+                  "limit": 20
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": { "application/json": { "example": { "code": 401, "message": "Unauthorized" } } }
+          }
+        }
+      }
+    }
+  }
+}
